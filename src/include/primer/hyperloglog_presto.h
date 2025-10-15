@@ -1,18 +1,11 @@
-//===----------------------------------------------------------------------===//
-//
-//                         BusTub
-//
-// hyperloglog_presto.h
-//
-// Identification: src/include/primer/hyperloglog_presto.h
-//
-// Copyright (c) 2015-2025, Carnegie Mellon University Database Group
-//
-//===----------------------------------------------------------------------===//
-
 #pragma once
 
+#include <sys/types.h>
+#include <algorithm>
 #include <bitset>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>  // NOLINT
 #include <sstream>
@@ -22,14 +15,15 @@
 #include <vector>
 
 #include "common/util/hash_util.h"
+#include "primer/hyperloglog.h"
 
 /** @brief Dense bucket size. */
-static constexpr int DENSE_BUCKET_SIZE = 4;
+#define DENSE_BUCKET_SIZE 4
 /** @brief Overflow bucket size. */
-static constexpr int OVERFLOW_BUCKET_SIZE = 3;
+#define OVERFLOW_BUCKET_SIZE 3
 
 /** @brief Total bucket size. */
-static constexpr int TOTAL_BUCKET_SIZE = (DENSE_BUCKET_SIZE + OVERFLOW_BUCKET_SIZE);
+#define TOTAL_BUCKET_SIZE (DENSE_BUCKET_SIZE + OVERFLOW_BUCKET_SIZE)
 
 namespace bustub {
 
@@ -45,9 +39,12 @@ class HyperLogLogPresto {
   static constexpr double CONSTANT = 0.79402;
 
  public:
+  std::bitset<BITSET_CAPACITY> bina_hash_;
+
   /** @brief Disabling default constructor. */
   HyperLogLogPresto() = delete;
 
+  /** @brief Parameterized constructor. */
   explicit HyperLogLogPresto(int16_t n_leading_bits);
 
   /** @brief Returns the dense_bucket_ data structure. */
@@ -56,11 +53,13 @@ class HyperLogLogPresto {
   /** @brief Returns overflow bucket of a specific given index. */
   auto GetOverflowBucketofIndex(uint16_t idx) { return overflow_bucket_[idx]; }
 
-  /** @brief Returns the cardinality of the set. */
+  /** @brief Retusn the cardinality of the set. */
   auto GetCardinality() const -> uint64_t { return cardinality_; }
 
+  /** @brief Element is added for HLL calculation. */
   auto AddElem(KeyType val) -> void;
 
+  /** @brief Function to compute cardinality. */
   auto ComputeCardinality() -> void;
 
  private:
@@ -82,6 +81,36 @@ class HyperLogLogPresto {
     return 0;
   }
 
+  void SplitAndStore(uint64_t zero_cnt, size_t bucket_idx) {
+    // 将 hash_value 转换为 std::bitset
+    std::bitset<64> bitset_hash(zero_cnt);  // 假设我们处理的是64位的哈希值
+    int tmp = zero_cnt;
+    // Step 1: 将右边连续零的数量 zero_cnt 分割成两部分
+
+    int overflow_value = tmp >> DENSE_BUCKET_SIZE;
+    int dense_value = zero_cnt;
+
+    if (overflow_value != 0) {
+      dense_value = zero_cnt - (overflow_value << 4);
+      // std::cout << "zero_cnt: " << zero_cnt << "overflow: " << overflow_value << "dense: " << dense_value <<
+      // std::endl;
+    }
+
+    // Step 2: 获取溢出部分和密集部分
+    std::bitset<OVERFLOW_BUCKET_SIZE> overflow_bits(overflow_value);
+    std::bitset<DENSE_BUCKET_SIZE> dense_bits(dense_value);
+    // std::cout << "dense_bit: " << dense_bits << std::endl;
+    // Step 3: 大于原来的元素才可以覆盖
+    if (zero_cnt > (dense_bucket_[bucket_idx].to_ulong() + (overflow_bucket_[bucket_idx].to_ulong() << 4))) {
+      dense_bucket_[bucket_idx] = dense_bits;
+      if (overflow_bits.size() > 0) {
+        overflow_bucket_[bucket_idx] = overflow_bits;
+      }
+    }
+
+    // std::cout<<"overflow: "<<overflow_bits<<"   dense: "<<dense_bits<<std::endl;
+  }
+
   /** @brief Structure holding dense buckets (or also known as registers). */
   std::vector<std::bitset<DENSE_BUCKET_SIZE>> dense_bucket_;
 
@@ -92,6 +121,9 @@ class HyperLogLogPresto {
   uint64_t cardinality_;
 
   // TODO(student) - can add more data structures as required
+  size_t num_buckets_;
+  // uint16_t nbits_; 唐完了
+  int16_t nbits_;
 };
 
 }  // namespace bustub
